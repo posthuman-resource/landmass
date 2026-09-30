@@ -396,12 +396,14 @@ impl<CS: CoordinateSystem> NavigationMesh<CS> {
       }
     }
 
+    let node_bbh = node_bbh(&polygons);
     Ok(ValidNavigationMesh {
       mesh_bounds,
       polygons,
       vertices,
       boundary_edges,
       height_mesh,
+      node_bbh,
       marker: Default::default(),
     })
   }
@@ -496,6 +498,11 @@ pub struct ValidNavigationMesh<CS: CoordinateSystem> {
   /// The height mesh used to "refine" point positions. See
   /// [`HeightNavigationMesh`] for more details.
   pub(crate) height_mesh: Option<ValidHeightNavigationMesh>,
+  /// A hierarchy over the polygons' bounds (`None` when there are no
+  /// polygons). Built once in [`NavigationMesh::validate`], so sampling a
+  /// point or an animation link's edge never scans every polygon, and adding
+  /// or changing an island never rebuilds it.
+  pub(crate) node_bbh: Option<BoundingBoxHierarchy<usize>>,
   /// Marker for the CoordinateSystem.
   pub(crate) marker: PhantomData<CS>,
 }
@@ -529,6 +536,7 @@ impl<CS: CoordinateSystem> Clone for ValidNavigationMesh<CS> {
       polygons: self.polygons.clone(),
       boundary_edges: self.boundary_edges.clone(),
       height_mesh: self.height_mesh.clone(),
+      node_bbh: self.node_bbh.clone(),
       marker: self.marker,
     }
   }
@@ -666,10 +674,10 @@ impl<CS: CoordinateSystem> ValidNavigationMesh<CS> {
 
     let mut best_node = None;
 
-    for (polygon_index, polygon) in self.polygons.iter().enumerate() {
-      if !sample_box.intersects_bounds(&polygon.bounds) {
-        continue;
-      }
+    // In index order, so a tie goes to the same polygon a scan of every
+    // polygon would pick.
+    for polygon_index in self.nodes_in_box(sample_box) {
+      let polygon = &self.polygons[polygon_index];
 
       // Whether we are using the normal mesh or the height mesh, we want the
       // triangles to be handled the same. So factor out the test and turn it
@@ -813,18 +821,42 @@ impl<CS: CoordinateSystem> ValidNavigationMesh<CS> {
     )
   }
 
+  /// The polygons whose bounds meet `query`, in index order.
+  fn nodes_in_box(&self, query: BoundingBox) -> Vec<usize> {
+    let Some(node_bbh) = self.node_bbh.as_ref() else {
+      return Vec::new();
+    };
+    let mut nodes: Vec<usize> =
+      node_bbh.query_box(query).into_iter().copied().collect();
+    nodes.sort_unstable();
+    nodes
+  }
+
   /// Samples the `edge` on this nav mesh clipping to a max vertical distance.
-  ///
-  /// `node_bbh` must correspond to this navigation mesh's polygons.
   pub(crate) fn sample_edge(
     &self,
     edge: (Vec3, Vec3),
-    node_bbh: &BoundingBoxHierarchy<usize>,
     max_vertical_distance: f32,
   ) -> Vec<SampledEdge> {
     let mut edges = vec![];
 
-    for &node in node_bbh.query_ray_segment(RaySegment::new(edge.0, edge.1)) {
+    // The polygons whose bounds, grown by the vertical distance, the edge
+    // crosses: those near the edge's own box grown the same way, then the
+    // exact test.
+    let expand_by = Vec3::new(0.0, 0.0, max_vertical_distance);
+    let ray = RaySegment::new(edge.0, edge.1);
+    let near = self.nodes_in_box(
+      BoundingBox::Empty
+        .expand_to_point(edge.0)
+        .expand_to_point(edge.1)
+        .expand_by_size(expand_by),
+    );
+    for node in near.into_iter().filter(|&node| {
+      self.polygons[node]
+        .bounds
+        .expand_by_size(expand_by)
+        .intersects_ray_segment(&ray)
+    }) {
       if let Some(height_mesh) = self.height_mesh.as_ref() {
         let height_polygon = &height_mesh.polygons[node];
         let triangles = height_polygon
@@ -922,20 +954,18 @@ fn clip_edge_to_triangles(
   edges.push(SampledEdge { interval: current_interval, node });
 }
 
-/// Computes a [`BoundingBoxHierarchy`] for the nodes in `nav_mesh`.
-pub(crate) fn nav_mesh_node_bbh<CS: CoordinateSystem>(
-  nav_mesh: &ValidNavigationMesh<CS>,
-  expand_by: Vec3,
-) -> BoundingBoxHierarchy<usize> {
-  let mut polygon_bounds = nav_mesh
-    .polygons
+/// Computes a [`BoundingBoxHierarchy`] over `polygons`' bounds, or `None` if
+/// there are none.
+fn node_bbh(polygons: &[ValidPolygon]) -> Option<BoundingBoxHierarchy<usize>> {
+  if polygons.is_empty() {
+    return None;
+  }
+  let mut polygon_bounds = polygons
     .iter()
     .enumerate()
-    .map(|(index, polygon)| {
-      (polygon.bounds.expand_by_size(expand_by), Some(index))
-    })
+    .map(|(index, polygon)| (polygon.bounds, Some(index)))
     .collect::<Vec<_>>();
-  BoundingBoxHierarchy::new(&mut polygon_bounds)
+  Some(BoundingBoxHierarchy::new(&mut polygon_bounds))
 }
 
 impl ValidPolygon {

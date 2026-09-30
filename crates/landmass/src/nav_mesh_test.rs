@@ -6,7 +6,7 @@ use crate::{
   coords::{CorePointSampleDistance, XYZ},
   nav_mesh::{
     Connectivity, HeightNavigationMesh, HeightPolygon, MeshEdgeRef,
-    SampledEdge, ValidPolygon, ValidateHeightMeshError, nav_mesh_node_bbh,
+    SampledEdge, ValidPolygon, ValidateHeightMeshError,
   },
   util::BoundingBox,
 };
@@ -1177,38 +1177,24 @@ fn samples_edge_on_square() {
   .validate()
   .expect("mesh is valid");
 
-  let node_bbh = nav_mesh_node_bbh(&mesh, Vec3::new(0.0, 0.0, 1.0));
-
   expect_that!(
-    mesh.sample_edge(
-      (Vec3::new(0.5, 0.0, 0.0), Vec3::new(1.0, 0.5, 0.0)),
-      &node_bbh,
-      1.0,
-    ),
+    mesh
+      .sample_edge((Vec3::new(0.5, 0.0, 0.0), Vec3::new(1.0, 0.5, 0.0)), 1.0,),
     unordered_elements_are!(&SampledEdge { node: 0, interval: (0.0, 1.0) })
   );
   expect_that!(
-    mesh.sample_edge(
-      (Vec3::new(0.0, 0.5, 0.0), Vec3::new(2.0, 0.5, 0.0)),
-      &node_bbh,
-      1.0,
-    ),
+    mesh
+      .sample_edge((Vec3::new(0.0, 0.5, 0.0), Vec3::new(2.0, 0.5, 0.0)), 1.0,),
     unordered_elements_are!(&SampledEdge { node: 0, interval: (0.0, 0.5) })
   );
   expect_that!(
-    mesh.sample_edge(
-      (Vec3::new(-1.0, 0.5, 0.0), Vec3::new(3.0, 0.5, 0.0)),
-      &node_bbh,
-      1.0,
-    ),
+    mesh
+      .sample_edge((Vec3::new(-1.0, 0.5, 0.0), Vec3::new(3.0, 0.5, 0.0)), 1.0,),
     unordered_elements_are!(&SampledEdge { node: 0, interval: (0.25, 0.5) })
   );
   expect_that!(
-    mesh.sample_edge(
-      (Vec3::new(1.0, 0.5, 0.0), Vec3::new(2.0, 0.5, 0.0)),
-      &node_bbh,
-      1.0,
-    ),
+    mesh
+      .sample_edge((Vec3::new(1.0, 0.5, 0.0), Vec3::new(2.0, 0.5, 0.0)), 1.0,),
     is_empty()
   );
 }
@@ -1239,14 +1225,9 @@ fn samples_edge_for_multiple_nodes() {
   .validate()
   .expect("mesh is valid");
 
-  let node_bbh = nav_mesh_node_bbh(&mesh, Vec3::new(0.0, 0.0, 1.0));
-
   expect_that!(
-    mesh.sample_edge(
-      (Vec3::new(0.75, 0.5, 0.0), Vec3::new(1.5, 1.25, 0.0)),
-      &node_bbh,
-      1.0
-    ),
+    mesh
+      .sample_edge((Vec3::new(0.75, 0.5, 0.0), Vec3::new(1.5, 1.25, 0.0)), 1.0),
     unordered_elements_are!(
       &SampledEdge { interval: (0.0, 0.33333334), node: 0 },
       &SampledEdge { interval: (0.33333334, 0.6666667), node: 1 },
@@ -1275,23 +1256,13 @@ fn samples_edge_for_multiple_floors() {
   .validate()
   .expect("mesh is valid");
 
-  let node_bbh = nav_mesh_node_bbh(&mesh, Vec3::new(0.0, 0.0, 1.0));
-
   expect_that!(
-    mesh.sample_edge(
-      (Vec3::new(0.0, 0.1, 0.5), Vec3::new(1.0, 0.1, 0.5)),
-      &node_bbh,
-      1.0
-    ),
+    mesh.sample_edge((Vec3::new(0.0, 0.1, 0.5), Vec3::new(1.0, 0.1, 0.5)), 1.0),
     unordered_elements_are!(&SampledEdge { interval: (0.0, 1.0), node: 0 },)
   );
 
   expect_that!(
-    mesh.sample_edge(
-      (Vec3::new(0.0, 0.1, 1.5), Vec3::new(1.0, 0.1, 1.5)),
-      &node_bbh,
-      1.0
-    ),
+    mesh.sample_edge((Vec3::new(0.0, 0.1, 1.5), Vec3::new(1.0, 0.1, 1.5)), 1.0),
     unordered_elements_are!(&SampledEdge { interval: (0.0, 1.0), node: 1 },)
   );
 }
@@ -1316,23 +1287,13 @@ fn samples_edge_along_stairs() {
   .validate()
   .expect("mesh is valid");
 
-  let node_bbh = nav_mesh_node_bbh(&mesh, Vec3::new(0.0, 0.0, 1.0));
-
   expect_that!(
-    mesh.sample_edge(
-      (Vec3::new(0.5, 0.5, 1.0), Vec3::new(0.5, 2.5, 1.0)),
-      &node_bbh,
-      0.5
-    ),
+    mesh.sample_edge((Vec3::new(0.5, 0.5, 1.0), Vec3::new(0.5, 2.5, 1.0)), 0.5),
     unordered_elements_are!(&SampledEdge { interval: (0.375, 0.625), node: 1 })
   );
 
   expect_that!(
-    mesh.sample_edge(
-      (Vec3::new(0.5, 0.5, 1.0), Vec3::new(0.5, 2.5, 1.0)),
-      &node_bbh,
-      1.1
-    ),
+    mesh.sample_edge((Vec3::new(0.5, 0.5, 1.0), Vec3::new(0.5, 2.5, 1.0)), 1.1),
     unordered_elements_are!(
       &SampledEdge { interval: (0.0, 0.25), node: 0 },
       &SampledEdge { interval: (0.25, 0.75), node: 1 },

@@ -18,7 +18,7 @@ use crate::{
   geometry::edge_intersection,
   island::{Island, IslandId},
   link::{AnimationLink, AnimationLinkId, AnimationLinkState, NodePortal},
-  nav_mesh::{MeshEdgeRef, nav_mesh_node_bbh},
+  nav_mesh::MeshEdgeRef,
   util::{BoundingBox, BoundingBoxHierarchy, RaySegment},
 };
 
@@ -594,7 +594,6 @@ impl<CS: CoordinateSystem> NavigationData<CS> {
       }
     }
 
-    let mut island_to_node_bbh = Default::default();
     for &animation_link_id in &new_animation_links {
       let state = self.animation_links.get_mut(animation_link_id).unwrap();
       let link = &state.main_link;
@@ -622,7 +621,6 @@ impl<CS: CoordinateSystem> NavigationData<CS> {
         start_edge,
         island_bbh,
         &self.islands,
-        &mut island_to_node_bbh,
         max_vertical_distance,
       );
 
@@ -634,7 +632,6 @@ impl<CS: CoordinateSystem> NavigationData<CS> {
         end_edge,
         island_bbh,
         &self.islands,
-        &mut island_to_node_bbh,
         max_vertical_distance,
       );
 
@@ -673,7 +670,6 @@ impl<CS: CoordinateSystem> NavigationData<CS> {
         continue;
       }
 
-      let mut node_bbh = None;
       for (animation_link_id, state) in self.animation_links.iter_mut() {
         if new_animation_links.contains(&animation_link_id) {
           // We already handled the new animation links above. Doing this here
@@ -713,26 +709,18 @@ impl<CS: CoordinateSystem> NavigationData<CS> {
           }
         }
 
-        if node_bbh.is_none() {
-          if !intersects(start_edge, &island.transformed_bounds)
-            && !intersects(end_edge, &island.transformed_bounds)
-          {
-            // Neither the start or end edges intersects the island bounds, so
-            // bail out early.
-            continue;
-          }
-          node_bbh = Some(nav_mesh_node_bbh(
-            island.nav_mesh.as_ref(),
-            Vec3::new(0.0, 0.0, max_vertical_distance),
-          ));
+        if !intersects(start_edge, &island.transformed_bounds)
+          && !intersects(end_edge, &island.transformed_bounds)
+        {
+          // Neither the start or end edges intersects the island bounds, so
+          // bail out early.
+          continue;
         }
 
-        let node_bbh = node_bbh.as_ref().unwrap();
         fn sample_portal_edge<CS: CoordinateSystem>(
           edge: (Vec3, Vec3),
           island_id: IslandId,
           island: &Island<CS>,
-          node_bbh: &BoundingBoxHierarchy<usize>,
           max_vertical_distance: f32,
         ) -> Vec<NodePortal> {
           if edge.0 == edge.1 {
@@ -761,7 +749,7 @@ impl<CS: CoordinateSystem> NavigationData<CS> {
             );
             island
               .nav_mesh
-              .sample_edge(edge, node_bbh, max_vertical_distance)
+              .sample_edge(edge, max_vertical_distance)
               .into_iter()
               .map(|edge| NodePortal {
                 interval: edge.interval,
@@ -774,14 +762,12 @@ impl<CS: CoordinateSystem> NavigationData<CS> {
           start_edge,
           island_id,
           island,
-          node_bbh,
           max_vertical_distance,
         );
         let new_end_portals = sample_portal_edge(
           end_edge,
           island_id,
           island,
-          node_bbh,
           max_vertical_distance,
         );
 
@@ -1335,7 +1321,6 @@ fn world_portal_to_node_portals<CS: CoordinateSystem>(
   portal: (Vec3, Vec3),
   island_bbh: &BoundingBoxHierarchy<IslandId>,
   islands: &DenseSlotMap<IslandId, Island<CS>>,
-  island_to_node_bbh: &mut HashMap<IslandId, BoundingBoxHierarchy<usize>>,
   max_vertical_distance: f32,
 ) -> Vec<NodePortal> {
   if portal.0 == portal.1 {
@@ -1362,12 +1347,6 @@ fn world_portal_to_node_portals<CS: CoordinateSystem>(
       continue;
     }
 
-    let node_bbh = island_to_node_bbh.entry(island_id).or_insert_with(|| {
-      nav_mesh_node_bbh(
-        island.nav_mesh.as_ref(),
-        Vec3::new(0.0, 0.0, max_vertical_distance),
-      )
-    });
     let local_portal = (
       island.transform.apply_inverse(portal.0),
       island.transform.apply_inverse(portal.1),
@@ -1376,7 +1355,7 @@ fn world_portal_to_node_portals<CS: CoordinateSystem>(
     node_portals.extend(
       island
         .nav_mesh
-        .sample_edge(local_portal, node_bbh, max_vertical_distance)
+        .sample_edge(local_portal, max_vertical_distance)
         .into_iter()
         .map(|edge| NodePortal {
           node: NodeRef { island_id, polygon_index: edge.node },

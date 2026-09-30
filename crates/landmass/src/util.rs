@@ -454,12 +454,14 @@ impl<ValueType> BoundingBoxHierarchy<ValueType> {
     }
   }
 
+  #[cfg(test)]
   pub(crate) fn query_ray_segment(&self, query: RaySegment) -> Vec<&ValueType> {
     let mut result = Vec::new();
     self.query_ray_segment_recursive(&query, &mut result);
     result
   }
 
+  #[cfg(test)]
   fn query_ray_segment_recursive<'a, 'b>(
     &'a self,
     query: &'b RaySegment,
