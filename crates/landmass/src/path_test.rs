@@ -1087,3 +1087,70 @@ fn indices_in_path_are_found_rev() {
     None
   );
 }
+
+#[test]
+fn straight_path_progresses_from_a_portal_end_to_an_end_point_on_the_other() {
+  // The apex sits on one end of the last portal and the end point lies a hair
+  // across its other end: every triangle area the funnel takes is noise. It
+  // used to restart the funnel at the far end of the same portal, at the same
+  // path index, and then back again, forever (`find_path` pushed waypoints
+  // until the allocator gave up; seen with a walker sent 6 m east on a game's
+  // terrain navmesh).
+  let nav_mesh = NavigationMesh {
+    vertices: vec![
+      Vec2::new(0.0, -2.0),
+      Vec2::new(1.0, -2.0),
+      Vec2::new(1.0, -1.0),
+      Vec2::new(0.0, -1.0),
+      Vec2::new(1.0, 0.0),
+      Vec2::new(0.0, 0.0),
+      Vec2::new(1.0, 1.0),
+      Vec2::new(0.0, 1.0),
+    ],
+    polygons: vec![vec![0, 1, 2, 3], vec![3, 2, 4, 5], vec![5, 4, 6, 7]],
+    polygon_type_indices: vec![0, 0, 0],
+    height_mesh: None,
+  }
+  .validate()
+  .expect("Mesh is valid.");
+
+  let mut archipelago =
+    Archipelago::<XY>::new(ArchipelagoOptions::from_agent_radius(0.5));
+  let island_id = archipelago
+    .add_island(Island::new(Transform::default(), Arc::new(nav_mesh)));
+
+  // The last portal runs from (1, 0) to (0, 0); each end in turn is the apex,
+  // and the end point lies just past the other end, either side of the
+  // portal's line.
+  let cases = [
+    (Vec3::new(1.0, 0.0, 0.0), Vec3::new(0.0, 6e-12, 0.0)),
+    (Vec3::new(1.0, 0.0, 0.0), Vec3::new(0.0, -6e-12, 0.0)),
+    (Vec3::new(0.0, 0.0, 0.0), Vec3::new(1.0, 6e-12, 0.0)),
+    (Vec3::new(0.0, 0.0, 0.0), Vec3::new(1.0, -6e-12, 0.0)),
+  ];
+  for (apex, end) in cases {
+    let path = Path {
+      island_segments: vec![IslandSegment {
+        island_id,
+        corridor: vec![0, 1, 2],
+        portal_edge_index: vec![2, 2],
+      }],
+      off_mesh_link_segments: vec![],
+      start_point: apex,
+      end_point: end,
+    };
+    let end_index = PathIndex::from_corridor_index(0, 2);
+    let steps = collect_straight_path(
+      &path,
+      &archipelago.nav_data,
+      (PathIndex::from_corridor_index(0, 1), apex),
+      (end_index, end),
+      /* iteration_limit= */ 8,
+    );
+    assert_eq!(
+      steps,
+      [(end_index, StraightPathStep::Waypoint(end))],
+      "from {apex} to {end}"
+    );
+  }
+}

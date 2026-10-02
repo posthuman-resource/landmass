@@ -321,8 +321,16 @@ impl Path {
         }
       };
 
+      // A funnel side that sits on the apex has no direction, and the areas
+      // taken against it are zero or rounding noise: tighten it rather than
+      // restart there. Restarting would put the next waypoint at the apex's
+      // own portal end, at the same path index, and from there the funnel
+      // can turn back to the other end of that portal, and so on forever.
+      // (Mononen's string pulling makes the same check.)
       if triangle_area_2(apex, current_right, portal_right) >= 0.0 {
-        if triangle_area_2(apex, current_left, portal_right) <= 0.0 {
+        if apex.xy() == current_right.xy()
+          || triangle_area_2(apex, current_left, portal_right) <= 0.0
+        {
           right_index = portal_index;
           current_right = portal_right;
         } else {
@@ -331,7 +339,9 @@ impl Path {
       }
 
       if triangle_area_2(apex, current_left, portal_left) <= 0.0 {
-        if triangle_area_2(apex, current_right, portal_left) >= 0.0 {
+        if apex.xy() == current_left.xy()
+          || triangle_area_2(apex, current_right, portal_left) >= 0.0
+        {
           left_index = portal_index;
           current_left = portal_left;
         } else {
